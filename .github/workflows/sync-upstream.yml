@@ -16,6 +16,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
 
     steps:
       - name: Checkout dev
@@ -55,6 +57,7 @@ jobs:
           echo "Updated upstream-sync: $current_sync_sha -> $upstream_sha"
 
       - name: Merge upstream into dev
+        id: merge
         run: |
           set -euo pipefail
 
@@ -62,6 +65,7 @@ jobs:
 
           if git merge-base --is-ancestor upstream/dev dev; then
             echo "dev already contains upstream/dev; nothing to merge."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -87,11 +91,18 @@ jobs:
           fi
 
           git push origin dev
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
           {
             echo "## Upstream sync succeeded"
             echo
             echo "Merged `anomalyco/models.dev:dev` into `dev`."
             echo
-            echo "The push to `dev` will trigger the existing Cloudflare deploy workflow."
+            echo "The reusable Deploy workflow will deploy the updated `dev` branch."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
