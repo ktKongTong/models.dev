@@ -1,0 +1,24 @@
+# Sources (accessed 2026-09-22):
+# https://commandcode.ai/models/qwen3-8-omni-flash
+# https://commandcode.ai/models
+# Same Qwen 3.8 OpenAI-compatible reasoning surface as sibling relay entries.
+base_model = "alibaba/qwen3.8-omni-flash"
+name = "Qwen 3.8 Omni Flash"
+
+[[reasoning_options]]
+type = "toggle"
+
+[[reasoning_options]]
+type = "effort"
+values = ["low", "medium", "xhigh"]
+
+[[reasoning_options]]
+type = "budget_tokens"
+
+[interleaved]
+field = "reasoning_content"
+
+[cost]
+input = 0.15
+output = 0.47
+cache_read = 0.016

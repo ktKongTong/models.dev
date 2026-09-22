@@ -1,0 +1,19 @@
+# Sources (accessed 2026-09-22):
+# https://commandcode.ai/models/gpt-6-astra
+# https://commandcode.ai/models
+# Command Code follows OpenAI's standard and >272K long-context price bands.
+base_model = "openai/gpt-6-astra"
+reasoning_options = [{ type = "effort", values = ["low", "medium", "high", "xhigh", "max"] }]
+
+[cost]
+input = 10.00
+output = 50.00
+cache_read = 1.00
+cache_write = 12.50
+
+[[cost.tiers]]
+tier = { type = "context", size = 272_000 }
+input = 20.00
+output = 75.00
+cache_read = 2.00
+cache_write = 25.00

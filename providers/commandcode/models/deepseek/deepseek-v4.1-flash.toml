@@ -1,0 +1,16 @@
+# Sources (accessed 2026-09-22):
+# https://commandcode.ai/models/deepseek-v4-1-flash
+# https://commandcode.ai/docs/resources/pricing-limits
+# Off-peak is shown below. Peak (Mon-Fri 01:00-04:00 and 06:00-10:00 UTC):
+# input 0.30 / output 1.20 / cache_read 0.006.
+# Command Code live probing on the same gateway confirmed reasoning_effort=low|high|max.
+base_model = "deepseek/deepseek-v4.1-flash"
+reasoning_options = [{ type = "effort", values = ["low", "high", "max"] }]
+
+[interleaved]
+field = "reasoning_content"
+
+[cost]
+input = 0.15
+output = 0.60
+cache_read = 0.003
