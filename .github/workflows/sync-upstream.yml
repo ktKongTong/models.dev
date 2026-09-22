@@ -1,0 +1,97 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/anomalyco/models.dev.git
+          git fetch upstream dev
+          git fetch origin dev upstream-sync
+
+      - name: Mirror upstream-sync
+        run: |
+          set -euo pipefail
+
+          upstream_sha="$(git rev-parse upstream/dev)"
+          current_sync_sha="$(git rev-parse origin/upstream-sync)"
+
+          if [ "$upstream_sha" = "$current_sync_sha" ]; then
+            echo "upstream-sync is already current: $upstream_sha"
+            exit 0
+          fi
+
+          git push \
+            --force-with-lease=refs/heads/upstream-sync:"$current_sync_sha" \
+            origin \
+            upstream/dev:refs/heads/upstream-sync
+
+          echo "Updated upstream-sync: $current_sync_sha -> $upstream_sha"
+
+      - name: Merge upstream into dev
+        run: |
+          set -euo pipefail
+
+          git checkout dev
+
+          if git merge-base --is-ancestor upstream/dev dev; then
+            echo "dev already contains upstream/dev; nothing to merge."
+            exit 0
+          fi
+
+          if ! git merge --no-edit upstream/dev; then
+            conflicts="$(git diff --name-only --diff-filter=U || true)"
+
+            echo "::error::Upstream merge conflict detected. dev was not modified."
+            {
+              echo "## Upstream sync failed"
+              echo
+              echo "Merge conflicts were detected while merging `anomalyco/models.dev:dev` into `dev`."
+              echo
+              echo "The `upstream-sync` branch was updated successfully, but `dev` was left unchanged."
+              echo
+              echo "### Conflicting files"
+              echo '~~~'
+              echo "$conflicts"
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            git merge --abort || true
+            exit 1
+          fi
+
+          git push origin dev
+
+          {
+            echo "## Upstream sync succeeded"
+            echo
+            echo "Merged `anomalyco/models.dev:dev` into `dev`."
+            echo
+            echo "The push to `dev` will trigger the existing Cloudflare deploy workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
