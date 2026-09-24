@@ -1,11 +1,10 @@
 # Toggle: reasoning.enabled = true|false
 # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
-name = "DeepSeek Pro Latest"
-description = "Flagship DeepSeek model for coding, reasoning, and agentic work"
-family = "deepseek"
-release_date = "2026-09-14"
-last_updated = "2026-09-14"
-attachment = false
+name = "Ember-1"
+description = "Multimodal reasoning model for visual analysis, planning, and tool use"
+release_date = "2026-09-24"
+last_updated = "2026-09-24"
+attachment = true
 reasoning = true
 temperature = true
 tool_call = true
@@ -20,14 +19,14 @@ type = "effort"
 values = ["low", "high", "max"]
 
 [cost]
-input = 0.39
-output = 2.9
-cache_read = 0.25
+input = 3
+output = 15
+cache_read = 0.3
 
 [limit]
 context = 1_048_576
 output = 943_718
 
 [modalities]
-input = ["text"]
+input = ["text", "image"]
 output = ["text"]
