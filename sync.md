@@ -232,7 +232,7 @@ Google is implemented in `packages/core/src/sync/providers/google.ts`.
 - Source endpoint: `https://generativelanguage.googleapis.com/v1beta/models`.
 - Required auth: `GOOGLE_API_KEY`, `GEMINI_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY`.
 - Model IDs are derived from the `models/{model}` resource names.
-- The API is authoritative for display names, token limits, temperature metadata, and the `thinking` flag when present.
+- The API is authoritative for display names, temperature metadata, and the `thinking` flag when present. Token limits normally come from the API, except Gemini 2.5 Computer Use, Gemini 3 Pro Image, and two Gemini 3.1 Flash Image variants whose model-specific cards document different limits.
 - Local Google models missing from the API response are removed.
 - New Google API models are not created automatically (`skipCreates`) and do not open missing-model issues because the endpoint is not lifecycle-authoritative.
 - Missing-model tracking is limited to recognizable public model families; opaque API codenames such as `ajax`, `perseus`, and `thorin` are ignored.
@@ -321,6 +321,8 @@ Fireworks AI is implemented in `packages/core/src/sync/providers/fireworks-ai.ts
 ## Vercel Status
 
 Vercel is intentionally not wired into `bun models:sync` right now. Keep using the existing `vercel:generate` script until Vercel sync behavior is redesigned and reviewed separately.
+
+`vercel:generate` reads `reasoning_options` from the public Vercel AI Gateway `/v1/models` catalog when present. It removes a redundant toggle if effort includes `none`, retains authored controls when catalog controls are absent or unrecognized, and treats an explicit empty list as no caller controls. This does not change the Vercel scheduling policy above.
 
 Do not add Vercel model changes to OpenRouter sync PRs.
 

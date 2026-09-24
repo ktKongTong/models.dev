@@ -82,7 +82,7 @@ import {
 import { openai, parseOpenAIModels } from "../src/sync/providers/openai.js";
 import { ofox } from "../src/sync/providers/ofox.js";
 import { pioneer } from "../src/sync/providers/pioneer.js";
-import { google, shouldTrackGoogleModel } from "../src/sync/providers/google.js";
+import { buildGoogleModel, google, shouldTrackGoogleModel } from "../src/sync/providers/google.js";
 import { buildTinfoilModel, tinfoil, type TinfoilModel } from "../src/sync/providers/tinfoil.js";
 import { resolveVeniceBaseModel } from "../src/sync/providers/venice.js";
 import { buildVercelModel, vercel } from "../src/sync/providers/vercel.js";
@@ -1232,6 +1232,34 @@ test("tracks public Google model families but not opaque internal IDs", () => {
   expect(shouldTrackGoogleModel("ajax")).toBe(false);
   expect(shouldTrackGoogleModel("perseus-2")).toBe(false);
   expect(shouldTrackGoogleModel("thorin")).toBe(false);
+});
+
+test.each([
+  ["gemini-2.5-computer-use-preview-10-2025", 128_000, 64_000],
+  ["gemini-3-pro-image", 65_536, 32_768],
+  ["gemini-3.1-flash-image", 131_072, 32_768],
+  ["gemini-3.1-flash-lite-image", 65_536, 4_096],
+])("preserves the %s model-card limits during Google sync", (id, context, output) => {
+  const existing: ExistingModel = {
+    base_model: `google/${id}`,
+    name: id,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    attachment: true,
+    reasoning: true,
+    tool_call: false,
+    open_weights: false,
+    limit: { context, output },
+    modalities: { input: ["text", "image"], output: ["text", "image"] },
+  };
+  const built = buildGoogleModel({
+    name: `models/${id}`,
+    inputTokenLimit: 65_536,
+    outputTokenLimit: 65_536,
+  }, existing);
+
+  expect(built).toMatchObject({ base_model: `google/${id}` });
+  expect(built).not.toHaveProperty("limit");
 });
 
 function tinfoilModel(overrides: Partial<TinfoilModel> = {}): TinfoilModel {
@@ -4757,6 +4785,110 @@ test("Vercel preserves a non-empty existing reasoning_options over the base menu
   expect(translated?.model).toMatchObject({
     reasoning_options: [{ type: "toggle" }],
   });
+});
+
+test("Vercel sync takes catalog reasoning controls over stale authored controls", () => {
+  const [model] = vercel.parseModels({
+    data: [{
+      id: "alibaba/qwen3.8-max-prime",
+      name: "Qwen 3.8 Max Prime",
+      created: 1_790_115_600,
+      context_window: 1_000_000,
+      max_tokens: 131_072,
+      type: "language",
+      tags: ["reasoning", "tool-use", "vision"],
+      reasoning_options: [
+        { type: "toggle" },
+        { type: "effort", values: ["none", "low", "medium", "high"] },
+      ],
+    }],
+  });
+
+  const translated = vercel.translateModel(model!, {
+    existing(id) {
+      return id === "alibaba/qwen3.8-max-prime"
+        ? { base_model: "alibaba/qwen3.8-max-prime", reasoning_options: [] }
+        : undefined;
+    },
+    authored() {
+      return undefined;
+    },
+  });
+
+  expect(translated?.model).toMatchObject({
+    base_model: "alibaba/qwen3.8-max-prime",
+    reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high"] }],
+  });
+  expect(vercel.sameModel?.({ reasoning_options: [] }, translated!.model)).toBe(false);
+});
+
+test("Vercel catalog budgets and toggles are synced when effort does not include none", () => {
+  const [model] = vercel.parseModels({
+    data: [{
+      id: "alibaba/qwen3.8-max-0902",
+      name: "Qwen 3.8 Max 0902",
+      created: 1_780_963_200,
+      type: "language",
+      tags: ["reasoning"],
+      reasoning_options: [
+        { type: "toggle" },
+        { type: "effort", values: ["low", "medium", "xhigh"] },
+        { type: "budget_tokens", min: 0, max: 262_144 },
+      ],
+    }],
+  });
+
+  const translated = vercel.translateModel(model!, {
+    existing(id) {
+      return id === "alibaba/qwen3.8-max-0902" ? { reasoning_options: [] } : undefined;
+    },
+    authored() {
+      return undefined;
+    },
+  });
+  expect(translated?.model.reasoning_options).toEqual([
+    { type: "toggle" },
+    { type: "effort", values: ["low", "medium", "xhigh"] },
+    { type: "budget_tokens", min: 0, max: 262_144 },
+  ]);
+  expect(translated?.header).toContain("# Toggle: reasoning.enabled = true|false");
+});
+
+test("Vercel missing, empty, and unknown catalog controls have distinct meanings", () => {
+  const base = {
+    id: "example/reasoner",
+    name: "Reasoner",
+    created: 1_780_963_200,
+    type: "language",
+    tags: ["reasoning"],
+  };
+  const authored = { reasoning_options: [{ type: "effort" as const, values: ["low" as const] }] };
+  const [missing, empty, unknown] = vercel.parseModels({
+    data: [
+      base,
+      { ...base, reasoning_options: [] },
+      { ...base, reasoning_options: [{ type: "effort", values: ["new-level"] }] },
+    ],
+  });
+
+  expect(buildVercelModel(missing!, authored).reasoning_options).toEqual(authored.reasoning_options);
+  expect(buildVercelModel(empty!, authored).reasoning_options).toEqual([]);
+  expect(buildVercelModel(unknown!, authored).reasoning_options).toEqual(authored.reasoning_options);
+});
+
+test("Vercel ignores catalog controls when the resolved model cannot reason", () => {
+  const [model] = vercel.parseModels({
+    data: [{
+      id: "example/non-reasoner",
+      name: "Non-Reasoner",
+      created: 1_780_963_200,
+      type: "language",
+      tags: [],
+      reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+    }],
+  });
+
+  expect(buildVercelModel(model!, undefined).reasoning_options).toBeUndefined();
 });
 
 test("OpenRouter Claude Opus fast variants factor onto base opus metadata", () => {
