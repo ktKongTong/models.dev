@@ -633,7 +633,7 @@ function Header(props: { active: ActiveSection }) {
             id="search-trigger"
             class="search-trigger"
             aria-label="Search"
-            aria-keyshortcuts="Control+F Meta+F Control+K Meta+K"
+            aria-keyshortcuts="Control+K Meta+K"
             aria-haspopup="dialog"
             aria-controls="search-modal"
           >
@@ -654,7 +654,7 @@ function Header(props: { active: ActiveSection }) {
               </svg>
               <span>Search</span>
             </span>
-            <span class="search-shortcut">Ctrl F</span>
+            <span class="search-shortcut">Ctrl K</span>
           </button>
         </div>
         <button id="help">How to use</button>
