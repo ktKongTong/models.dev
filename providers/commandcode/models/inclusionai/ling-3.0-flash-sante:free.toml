@@ -1,0 +1,12 @@
+# Sources (accessed 2026-09-22):
+# https://commandcode.ai/models/ling-3-0-flash-sante-free
+# https://commandcode.ai/docs/resources/pricing-limits
+# Free tier: input/output/cache reads are all $0/M.
+base_model = "inclusionai/ling-3.0-flash-sante"
+name = "Ling 3.0 Flash Sante (Free)"
+reasoning_options = [{ type = "effort", values = ["high"] }]
+
+[cost]
+input = 0
+output = 0
+cache_read = 0
