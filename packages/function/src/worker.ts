@@ -7,13 +7,9 @@ import {
   parseModelTypes,
 } from "@models.dev/core/src/filter.js";
 import type { ModelTypeValue } from "@models.dev/core/src/filter.js";
-import { hitEvent } from "@models.dev/core/src/hit.js";
 
 export interface Env {
   ASSETS: any;
-  PosthogToken: string;
-  LakeEndpoint: string;
-  LakeToken: string;
 }
 
 export default {
@@ -101,28 +97,6 @@ export default {
   },
 };
 
-async function sendHit(endpoint: string, token: string, body: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body,
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => undefined);
-    await response?.body?.cancel();
-    if (response?.ok) return;
-    const retryable =
-      !response || response.status === 429 || response.status >= 500;
-    if (!retryable || attempt === 2)
-      throw new Error(
-        `Lake hit delivery failed: ${response?.status ?? "network error"}`,
-      );
-    await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
-  }
-}
 
 type CatalogEndpoint = "api" | "models" | "catalog";
 
