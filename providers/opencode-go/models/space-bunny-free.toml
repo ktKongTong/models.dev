@@ -10,6 +10,7 @@ reasoning_options = [
 ]
 tool_call = true
 open_weights = false
+status = "deprecated"
 
 [interleaved]
 field = "reasoning_content"
