@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      changed: ${{ steps.sync.outputs.changed }}
+      changed: ${{ steps.merge-dev.outputs.changed }}
 
     steps:
       - name: Checkout dev
@@ -31,59 +31,110 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Fetch upstream
+      - name: Fetch branches
         run: |
           git remote add upstream https://github.com/anomalyco/models.dev.git
           git fetch upstream dev
+          git fetch origin dev upstream-sync
 
-      - name: Sync upstream into dev
-        id: sync
+      - name: Sync upstream into upstream-sync
         run: |
           set -euo pipefail
 
-          # Sync the upstream snapshot into dev without importing upstream
-          # workflow commits. Fork-owned workflows stay untouched.
-          git diff --binary HEAD upstream/dev -- . ':(exclude).github/workflows/**' > /tmp/upstream.patch
+          git checkout -B upstream-sync origin/upstream-sync
 
-          if [ ! -s /tmp/upstream.patch ]; then
-            echo "dev is already in sync with upstream (excluding workflows)."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor upstream/dev upstream-sync; then
+            echo "upstream-sync already contains upstream/dev."
             exit 0
           fi
 
-          git apply --index --3way /tmp/upstream.patch
+          set +e
+          git merge --no-commit --no-ff upstream/dev
+          merge_status=$?
+          set -e
+
+          # GitHub's GITHUB_TOKEN cannot update workflow files imported from
+          # another branch. Keep this fork's workflow subtree unchanged on
+          # upstream-sync while preserving upstream commit ancestry.
+          git restore --source=HEAD --staged --worktree -- .github/workflows || true
 
           conflicts="$(git diff --name-only --diff-filter=U || true)"
           if [ -n "$conflicts" ]; then
-            echo "::error::Upstream sync conflict detected. dev was not modified."
+            echo "::error::Conflict while syncing upstream into upstream-sync."
             {
-              echo "## Upstream sync failed"
-              echo
-              echo "Conflicts were detected while applying the latest upstream snapshot to `dev`."
-              echo
-              echo "Files under `.github/workflows` are intentionally excluded and remain fork-owned."
+              echo "## upstream-sync failed"
               echo
               echo "### Conflicting files"
               echo '~~~'
               echo "$conflicts"
               echo '~~~'
             } >> "$GITHUB_STEP_SUMMARY"
-
-            git reset --hard HEAD
+            git merge --abort || true
             exit 1
           fi
 
-          upstream_sha="$(git rev-parse upstream/dev)"
-          git commit -m "chore(sync): sync upstream at ${upstream_sha:0:12}"
+          if [ "$merge_status" -ne 0 ]; then
+            echo "Workflow-only conflicts were resolved by keeping fork workflows."
+          fi
+
+          # Create the merge commit even when upstream only changed workflows,
+          # so upstream/dev remains recorded as an ancestor of upstream-sync.
+          git commit --allow-empty --no-edit
+          git push origin upstream-sync
+
+      - name: Merge upstream-sync into dev
+        id: merge-dev
+        run: |
+          set -euo pipefail
+
+          git fetch origin dev upstream-sync
+          git checkout -B dev origin/dev
+
+          if git merge-base --is-ancestor origin/upstream-sync dev; then
+            echo "dev already contains upstream-sync."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          git merge --no-commit --no-ff origin/upstream-sync
+          merge_status=$?
+          set -e
+
+          # dev owns its Actions workflows.
+          git restore --source=HEAD --staged --worktree -- .github/workflows || true
+
+          conflicts="$(git diff --name-only --diff-filter=U || true)"
+          if [ -n "$conflicts" ]; then
+            echo "::error::Conflict while merging upstream-sync into dev."
+            {
+              echo "## Upstream merge requires resolution"
+              echo
+              echo "`upstream-sync` was updated successfully, but `dev` was left unchanged."
+              echo
+              echo "### Conflicting files"
+              echo '~~~'
+              echo "$conflicts"
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            git merge --abort || true
+            exit 1
+          fi
+
+          if [ "$merge_status" -ne 0 ]; then
+            echo "Workflow-only conflicts were resolved by keeping dev workflows."
+          fi
+
+          git commit --allow-empty --no-edit
           git push origin dev
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
           {
             echo "## Upstream sync succeeded"
             echo
-            echo "Synced `anomalyco/models.dev:dev` at `$upstream_sha` into `dev`."
+            echo "`anomalyco/models.dev:dev` → `upstream-sync` → `dev`."
             echo
-            echo "Fork-owned files under `.github/workflows` were preserved."
+            echo "Upstream ancestry is preserved; fork workflows remain local."
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
