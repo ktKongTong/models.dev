@@ -1,0 +1,16 @@
+# Sources (accessed 2026-09-22):
+# https://commandcode.ai/models/longcat-2-0
+# https://commandcode.ai/changelog
+# The former :free lane was retired in v1.58.0 and replaced by this paid route.
+# Toggle: reasoning.enabled = true|false
+base_model = "meituan/longcat-2.0"
+name = "LongCat 2.0"
+reasoning_options = [{ type = "toggle" }]
+
+[cost]
+input = 0.30
+output = 1.20
+cache_read = 0.006
+
+[interleaved]
+field = "reasoning_content"
