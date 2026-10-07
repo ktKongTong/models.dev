@@ -7,62 +7,17 @@ import {
   parseModelTypes,
 } from "@models.dev/core/src/filter.js";
 import type { ModelTypeValue } from "@models.dev/core/src/filter.js";
-import { hitEvent } from "@models.dev/core/src/hit.js";
 
 export interface Env {
   ASSETS: any;
-  PosthogToken: string;
-  LakeEndpoint: string;
-  LakeToken: string;
 }
 
 export default {
   async fetch(
     request: Request,
     env: Env,
-    ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
-    const ip = request.headers.get("cf-connecting-ip") ?? undefined;
-    const country = request.headers.get("cf-ipcountry") ?? undefined;
-    const agent = request.headers.get("user-agent") ?? undefined;
-    if (agent?.includes("opencode") || agent?.includes("bun")) {
-      ctx.waitUntil(
-        fetch("https://us.i.posthog.com/i/v0/e/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            api_key: JSON.parse(env.PosthogToken).value,
-            event: "hit",
-            distinct_id: ip ?? "unknown",
-            properties: {
-              $process_person_profile: false,
-              user_agent: agent ?? "unknown",
-              country: country ?? "unknown",
-              path: url.pathname,
-            },
-          }),
-        }),
-      );
-
-      ctx.waitUntil(
-        sendHit(
-          JSON.parse(env.LakeEndpoint).value,
-          JSON.parse(env.LakeToken).value,
-          JSON.stringify([
-            hitEvent(new Date().toISOString(), {
-              method: request.method,
-              path: url.pathname,
-              useragent: agent,
-              ip,
-              cf_country: country,
-            }),
-          ]),
-        ),
-      );
-    }
 
     if (url.pathname === "/model-schema.json") {
       const apiResponse = await catalogResponse(url, request, env, "api");
@@ -81,7 +36,7 @@ export default {
 
       const schema = {
         $schema: "https://json-schema.org/draft/2020-12/schema",
-        $id: "https://models.dev/model-schema.json",
+        $id: "https://models.koft.dev/model-schema.json",
         $defs: {
           Model: {
             type: "string",
@@ -95,6 +50,7 @@ export default {
         headers: {
           "Content-Type": "application/json",
           "Cache-Control": "public, max-age=3600",
+          "Access-Control-Allow-Origin": "*",
         },
       });
     }
@@ -114,13 +70,11 @@ export default {
     } else if (isHtmlRoute(url.pathname)) {
       url.pathname = htmlRouteAssetPath(url.pathname);
     } else if (url.pathname.startsWith("/logos/")) {
-      // Check if the specific provider logo exists in static assets
       const logoResponse = await env.ASSETS.fetch(
         new Request(url.toString(), request),
       );
 
       if (logoResponse.status === 404) {
-        // Fallback to default logo
         const defaultUrl = new URL(url);
         defaultUrl.pathname = "/logos/default.svg";
         return await env.ASSETS.fetch(
@@ -143,28 +97,6 @@ export default {
   },
 };
 
-async function sendHit(endpoint: string, token: string, body: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body,
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => undefined);
-    await response?.body?.cancel();
-    if (response?.ok) return;
-    const retryable =
-      !response || response.status === 429 || response.status >= 500;
-    if (!retryable || attempt === 2)
-      throw new Error(
-        `Lake hit delivery failed: ${response?.status ?? "network error"}`,
-      );
-    await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
-  }
-}
 
 type CatalogEndpoint = "api" | "models" | "catalog";
 
@@ -204,7 +136,17 @@ async function catalogResponse(
   const assetResponse = await env.ASSETS.fetch(
     new Request(assetUrl.toString(), request),
   );
-  if (!assetResponse.ok || suffix !== undefined) return assetResponse;
+  if (!assetResponse.ok) return assetResponse;
+
+  if (suffix !== undefined) {
+    const headers = new Headers(assetResponse.headers);
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Cache-Control", "public, max-age=3600");
+    return new Response(assetResponse.body, {
+      status: assetResponse.status,
+      headers,
+    });
+  }
 
   const value = await assetResponse.json();
   const filtered = endpoint === "api"
@@ -230,6 +172,7 @@ async function catalogResponse(
   headers.delete("ETag");
   headers.set("Content-Type", "application/json");
   headers.set("Cache-Control", "public, max-age=3600");
+  headers.set("Access-Control-Allow-Origin", "*");
   return new Response(JSON.stringify(filtered), { headers });
 }
 
