@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 
-import { generateV2, ProviderV2, toModelV2 } from "../src/index.js";
+import {
+  CacheSupportV2,
+  DurationStringV2,
+  generateV2,
+  ProviderV2,
+  toModelV2,
+} from "../src/index.js";
 import type { Model, Provider } from "../src/index.js";
 
 describe("v2 catalog generation", () => {
@@ -134,4 +140,34 @@ describe("v2 catalog generation", () => {
       },
     });
   }, 15_000);
+
+  test("validates cache capabilities and duration strings", () => {
+    expect(DurationStringV2.safeParse("5m").success).toBe(true);
+    expect(DurationStringV2.safeParse("30m").success).toBe(true);
+    expect(DurationStringV2.safeParse("1h").success).toBe(true);
+    expect(DurationStringV2.safeParse("24h").success).toBe(true);
+    expect(DurationStringV2.safeParse("500ms").success).toBe(true);
+    expect(DurationStringV2.safeParse("5min").success).toBe(false);
+
+    expect(
+      CacheSupportV2.safeParse({
+        supported: true,
+        implicit: { ttl: ["30m"], min_tokens: 1024 },
+        explicit: {
+          ttl: ["5m", "1h"],
+          max_breakpoints: 4,
+          targets: ["tools", "system", "messages"],
+          min_tokens: 4096,
+        },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      CacheSupportV2.safeParse({
+        supported: true,
+        implicit: true,
+        explicit: false,
+      }).success,
+    ).toBe(true);
+  });
 });
